@@ -111,15 +111,7 @@
                  key         :: rabbit_binding:key(),
                  args        :: rabbit_framing:amqp_table()}).
 
--type(amqqueue() ::
-        #amqqueue{name            :: rabbit_amqqueue:name(),
-                  durable         :: boolean(),
-                  auto_delete     :: boolean(),
-                  exclusive_owner :: rabbit_types:maybe(pid()),
-                  arguments       :: rabbit_framing:amqp_table(),
-                  pid             :: rabbit_types:maybe(pid()),
-                  slave_pids      :: [pid()],
-                  vhost           :: rabbit_types:vhost()}).
+-type(amqqueue() :: #amqqueue{}).
 
 -type(exchange() ::
         #exchange{name        :: rabbit_exchange:name(),

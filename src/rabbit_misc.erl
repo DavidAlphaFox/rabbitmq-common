@@ -305,7 +305,13 @@ protocol_error(#amqp_error{} = Error) ->
 
 not_found(R) -> protocol_error(not_found, "no ~s", [rs(R)]).
 
-absent(#amqqueue{name = QueueName, pid = QPid, durable = true}, nodedown) ->
+absent(Q, AbsentReason) ->
+    QueueName = amqqueue:get_name(Q),
+    QPid = amqqueue:get_pid(Q),
+    IsDurable = amqqueue:is_durable(Q),
+    priv_absent(QueueName, QPid, IsDurable, AbsentReason).
+
+priv_absent(QueueName, QPid, true, nodedown) ->
     %% The assertion of durability is mainly there because we mention
     %% durability in the error message. That way we will hopefully
     %% notice if at some future point our logic changes s.t. we get
@@ -314,15 +320,15 @@ absent(#amqqueue{name = QueueName, pid = QPid, durable = true}, nodedown) ->
                    "home node '~s' of durable ~s is down or inaccessible",
                    [node(QPid), rs(QueueName)]);
 
-absent(#amqqueue{name = QueueName}, stopped) ->
+priv_absent(QueueName, _QPid, _IsDurable, stopped) ->
     protocol_error(not_found,
                    "~s process is stopped by supervisor", [rs(QueueName)]);
 
-absent(#amqqueue{name = QueueName}, crashed) ->
+priv_absent(QueueName, _QPid, _IsDurable, crashed) ->
     protocol_error(not_found,
                    "~s has crashed and failed to restart", [rs(QueueName)]);
 
-absent(#amqqueue{name = QueueName}, timeout) ->
+priv_absent(QueueName, _QPid, _IsDurable, timeout) ->
     protocol_error(not_found,
                    "failed to perform operation on ~s due to timeout", [rs(QueueName)]).
 
