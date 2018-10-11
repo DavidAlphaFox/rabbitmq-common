@@ -11,7 +11,7 @@
 %% The Original Code is RabbitMQ.
 %%
 %% The Initial Developer of the Original Code is GoPivotal, Inc.
-%% Copyright (c) 2007-2018 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2018 Pivotal Software, Inc.  All rights reserved.
 %%
 
 -module(amqqueue_v1).
@@ -19,8 +19,11 @@
 -include("resource.hrl").
 
 -export([new/8,
+         new_with_version/9,
          fields/0,
+         fields/1,
          field_vhost/0,
+         upgrade_to/2,
          % arguments
          get_arguments/1,
          set_arguments/2,
@@ -100,7 +103,27 @@ new(Name,
     Owner,
     Args,
     VHost,
-    ActingUser) ->
+    Options) ->
+    new_with_version(
+      ?record_version,
+      Name,
+      Pid,
+      Durable,
+      AutoDelete,
+      Owner,
+      Args,
+      VHost,
+      Options).
+
+new_with_version(?record_version,
+                 Name,
+                 Pid,
+                 Durable,
+                 AutoDelete,
+                 Owner,
+                 Args,
+                 VHost,
+                 Options) ->
     #amqqueue{name               = Name,
               durable            = Durable,
               auto_delete        = AutoDelete,
@@ -114,11 +137,14 @@ new(Name,
               state              = live,
               policy_version     = 0,
               slave_pids_pending_shutdown = [],
-              vhost                       = VHost,
-              options = #{user => ActingUser}}.
+              vhost              = VHost,
+              options            = Options}.
 
 is_amqqueue(#amqqueue{}) -> true;
 is_amqqueue(_)           -> false.
+
+upgrade_to(?record_version, #amqqueue{} = Queue) ->
+    Queue.
 
 % arguments
 
@@ -224,7 +250,9 @@ is_auto_delete(#amqqueue{auto_delete = AutoDelete}) -> AutoDelete.
 
 is_durable(#amqqueue{durable = Durable}) -> Durable.
 
-fields() -> record_info(fields, amqqueue).
+fields() -> fields(?record_version).
+
+fields(?record_version) -> record_info(fields, amqqueue).
 
 field_vhost() -> #amqqueue.vhost.
 

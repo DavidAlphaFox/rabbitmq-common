@@ -11,7 +11,7 @@
 %% The Original Code is RabbitMQ.
 %%
 %% The Initial Developer of the Original Code is GoPivotal, Inc.
-%% Copyright (c) 2007-2018 Pivotal Software, Inc.  All rights reserved.
+%% Copyright (c) 2018 Pivotal Software, Inc.  All rights reserved.
 %%
 
 -module(amqqueue). %% Could become amqqueue_v2 in the future.
@@ -19,8 +19,11 @@
 -include_lib("rabbit_common/include/rabbit.hrl").
 
 -export([new/9,
+         new_with_version/10,
          fields/0,
+         fields/1,
          field_vhost/0,
+         upgrade_to/2,
          % arguments
          get_arguments/1,
          set_arguments/2,
@@ -83,6 +86,12 @@
 
 -define(record_version, amqqueue_v2).
 
+record_version_to_use() ->
+    case rabbit_feature_flags:is_enabled(quorum_queue) of
+        true  -> amqqueue_v2;
+        false -> amqqueue_v1
+    end.
+
 new(Name,
     Pid,
     Durable,
@@ -90,29 +99,23 @@ new(Name,
     Owner,
     Args,
     VHost,
-    ActingUser,
+    Options,
     Type
    ) ->
-    case quorum_queue_ff_enabled() of
-        true ->
-            #amqqueue{name               = Name,
-                      durable            = Durable,
-                      auto_delete        = AutoDelete,
-                      arguments          = Args,
-                      exclusive_owner    = Owner,
-                      pid                = Pid,
-                      slave_pids         = [],
-                      sync_slave_pids    = [],
-                      recoverable_slaves = [],
-                      gm_pids            = [],
-                      state              = live,
-                      policy_version     = 0,
-                      slave_pids_pending_shutdown = [],
-                      vhost                       = VHost,
-                      options = #{user => ActingUser},
-                      type               = Type,
-                      created_at         = erlang:monotonic_time()};
-        false ->
+    case record_version_to_use() of
+        ?record_version ->
+            new_with_version(
+              ?record_version,
+              Name,
+              Pid,
+              Durable,
+              AutoDelete,
+              Owner,
+              Args,
+              VHost,
+              Options,
+              Type);
+        _ ->
             amqqueue_v1:new(
               Name,
               Pid,
@@ -121,20 +124,69 @@ new(Name,
               Owner,
               Args,
               VHost,
-              ActingUser)
+              Options)
     end.
+
+new_with_version(?record_version,
+                 Name,
+                 Pid,
+                 Durable,
+                 AutoDelete,
+                 Owner,
+                 Args,
+                 VHost,
+                 Options,
+                 Type) ->
+    #amqqueue{name               = Name,
+              durable            = Durable,
+              auto_delete        = AutoDelete,
+              arguments          = Args,
+              exclusive_owner    = Owner,
+              pid                = Pid,
+              slave_pids         = [],
+              sync_slave_pids    = [],
+              recoverable_slaves = [],
+              gm_pids            = [],
+              state              = live,
+              policy_version     = 0,
+              slave_pids_pending_shutdown = [],
+              vhost              = VHost,
+              options            = Options,
+              type               = Type,
+              created_at         = erlang:monotonic_time()};
+new_with_version(Version,
+                 Name,
+                 Pid,
+                 Durable,
+                 AutoDelete,
+                 Owner,
+                 Args,
+                 VHost,
+                 Options,
+                 ?amqqueue_v1_type) ->
+    amqqueue_v1:new_with_version(
+      Version,
+      Name,
+      Pid,
+      Durable,
+      AutoDelete,
+      Owner,
+      Args,
+      VHost,
+      Options).
 
 is_amqqueue(#amqqueue{}) -> true;
 is_amqqueue(Queue)       -> amqqueue_v1:is_amqqueue(Queue).
 
-quorum_queue_ff_enabled() ->
-    %% TODO: Check if the featurue flag is enabled or not.
-    %%
-    %% Possible solutions:
-    %%   - We make a call to an Mnesia/ETS local table.
-    %%   - We use the code_version moduel to "rebuild" this module on
-    %%     the fly, so the function returns statically "true" or "false".
-    true.
+upgrade_to(?record_version, #amqqueue{} = Queue) ->
+    Queue;
+upgrade_to(?record_version, OldQueue) ->
+    Fields = erlang:tuple_to_list(OldQueue) ++ [?amqqueue_v1_type,
+                                                erlang:monotonic_time(),
+                                                undefined],
+    #amqqueue{} = erlang:list_to_tuple(Fields);
+upgrade_to(Version, OldQueue) ->
+    amqqueue_v1:upgrade_to(Version, OldQueue).
 
 % arguments
 
@@ -323,25 +375,28 @@ is_quorum(Queue) ->
     get_type(Queue) =:= quorum.
 
 fields() ->
-    case quorum_queue_ff_enabled() of
-        true  -> record_info(fields, amqqueue);
-        false -> amqqueue_v1:fields()
+    case record_version_to_use() of
+        ?record_version -> fields(?record_version);
+        _               -> amqqueue_v1:fields()
     end.
 
+fields(?record_version) -> record_info(fields, amqqueue);
+fields(Version)         -> amqqueue_v1:fields(Version).
+
 field_vhost() ->
-    case quorum_queue_ff_enabled() of
+    case rabbit_feature_flags:is_enabled(quorum_queue) of
         true  -> #amqqueue.vhost;
         false -> amqqueue_v1:field_vhost()
     end.
 
 pattern_match_all() ->
-    case quorum_queue_ff_enabled() of
+    case rabbit_feature_flags:is_enabled(quorum_queue) of
         true  -> #amqqueue{_ = '_'};
         false -> amqqueue_v1:pattern_match_all()
     end.
 
 pattern_match_on_name(Name) ->
-    case quorum_queue_ff_enabled() of
+    case rabbit_feature_flags:is_enabled(quorum_queue) of
         true  -> #amqqueue{name = Name, _ = '_'};
         false -> amqqueue_v1:pattern_match_on_name(Name)
     end.
