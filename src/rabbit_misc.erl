@@ -734,6 +734,12 @@ version_compare(A, B) ->
                  end
     end.
 
+%% For versions starting from 3.7.x:
+%% Versions are considered compatible (except for special cases; see
+%% below). The feature flags will determine if they are actually
+%% compatible.
+%%
+%% For versions up-to 3.7.x:
 %% a.b.c and a.b.d match, but a.b.c and a.d.e don't. If
 %% versions do not match that pattern, just compare them.
 %%
@@ -745,12 +751,24 @@ version_minor_equivalent(A, B) ->
     {{MajB, MinB, PatchB, _}, _} = rabbit_semver:normalize(rabbit_semver:parse(B)),
 
     case {MajA, MinA, MajB, MinB} of
-        {3, 6, 3, 6} -> if
-                            PatchA >= 6 -> PatchB >= 6;
-                            PatchA < 6  -> PatchB < 6;
-                            true -> false
-                        end;
-        _            -> MajA =:= MajB andalso MinA =:= MinB
+        {3, 6, 3, 6} ->
+            if
+                PatchA >= 6 -> PatchB >= 6;
+                PatchA < 6  -> PatchB < 6;
+                true -> false
+            end;
+        _
+          when (MajA < 3 orelse (MajA =:= 3 andalso MinA =< 6))
+               orelse
+               (MajB < 3 orelse (MajB =:= 3 andalso MinB =< 6)) ->
+            MajA =:= MajB andalso MinA =:= MinB;
+        _ ->
+            %% Starting with RabbitMQ 3.7.x, we consider this
+            %% minor release series and all subsequent series to
+            %% be possibly compatible, based on just the version.
+            %% The real compatibility check is deferred to the
+            %% rabbit_feature_flags module in rabbitmq-server.
+            true
     end.
 
 dict_cons(Key, Value, Dict) ->
