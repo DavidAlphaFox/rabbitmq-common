@@ -14,7 +14,6 @@
 %% Copyright (c) 2007-2018 Pivotal Software, Inc.  All rights reserved.
 %%
 
--include("amqqueue.hrl").
 -include("resource.hrl").
 
 %% Passed around most places
